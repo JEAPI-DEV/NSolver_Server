@@ -91,7 +91,6 @@ public class GreetServer {
                 try {
                     out = new PrintWriter(clientSocket.getOutputStream(), true);
                     in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                    // determine current maze id from config file at connection time
                     currentMaze = readMazeIdFromConfig();
                     String greeting;
                     while ((greeting = in.readLine()) != null) {
@@ -99,17 +98,14 @@ public class GreetServer {
                             currentPlayer = Integer.parseInt(greeting.substring(10));
                             out.println("OK");
                         } else if ("GET_MAP".equals(greeting)) {
-                            // refresh maze id in case file changed between runs
                             if (currentMaze == null) currentMaze = readMazeIdFromConfig();
                             if (currentPlayer != null && currentMaze != null) {
                                 Map<Integer, Map<String, String>> perPlayer = mapsByMaze.getOrDefault(currentMaze, Map.of());
                                 Map<String, String> cells = perPlayer.getOrDefault(currentPlayer, Map.of());
-                                List<String> vals = new ArrayList<>();
-                                vals.addAll(cells.values());
+                                List<String> vals = new ArrayList<>(cells.values());
                                 Map<Integer, Set<String>> perVisited = visitedByMaze.getOrDefault(currentMaze, Map.of());
                                 Set<String> visited = perVisited.getOrDefault(currentPlayer, Set.of());
                                 for (String v : visited) {
-                                    // return as x,y,VISITED
                                     vals.add(v + ",VISITED");
                                 }
                                 if (vals.isEmpty()) {
@@ -121,7 +117,6 @@ public class GreetServer {
                                 out.println("NO_PLAYER_OR_MAZE");
                             }
                         } else if (greeting.startsWith("UPDATE_MAP ")) {
-                            // refresh maze id in case file changed between runs
                             if (currentMaze == null) currentMaze = readMazeIdFromConfig();
                             if (currentPlayer != null && currentMaze != null) {
                                 String data = greeting.substring(11);
