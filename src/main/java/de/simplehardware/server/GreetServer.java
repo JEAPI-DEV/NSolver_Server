@@ -111,6 +111,21 @@ public class GreetServer {
                 .getOrDefault(mazeId, Collections.emptyMap())
                 .getOrDefault(playerId, Collections.emptyMap());
 
+        int finishCount = 0;
+        int formCount = 0;
+        for (String cellLine : cells.values()) {
+            int firstComma = cellLine.indexOf(',');
+            if (firstComma != -1) {
+                int secondComma = cellLine.indexOf(',', firstComma + 1);
+                if (secondComma != -1) {
+                    int pri = MapParser.getCellTypePriority(cellLine, secondComma);
+                    if (pri == 4) finishCount++;
+                    else if (pri == 3) formCount++;
+                }
+            }
+        }
+        logger.info("Sending map to player", "playerId="+playerId, "mazeId="+mazeId, "total="+cells.size(), "finishes="+finishCount, "forms="+formCount);
+
         if (cells.isEmpty()) {
             out.println("NO_MAP");
         } else {
@@ -135,10 +150,12 @@ public class GreetServer {
         Map<Integer, Map<String, String>> perPlayer = mapsByMaze.computeIfAbsent(mazeId, k -> new ConcurrentHashMap<>());
         Map<String, String> cells = perPlayer.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>());
 
-        String[] updates = data.split(";");
-        for (String update : updates) {
+        String[] updatesArray = data.split(";");
+        int updateCount = 0;
+        for (String update : updatesArray) {
             if (update == null || update.isEmpty()) continue;
             update = update.trim();
+            updateCount++;
 
             String key = MapParser.extractKey(update);
             if (key == null) continue;
@@ -147,13 +164,26 @@ public class GreetServer {
             if (existing == null) {
                 cells.put(key, update);
             } else {
-                int newPriority = MapParser.getCellTypePriority(update, update.indexOf(',', update.indexOf(',') + 1));
-                int existingPriority = MapParser.getCellTypePriority(existing, existing.indexOf(',', existing.indexOf(',') + 1));
+                int firstComma = update.indexOf(',');
+                int secondComma = update.indexOf(',', firstComma + 1);
+                int newPriority = MapParser.getCellTypePriority(update, secondComma);
+                firstComma = existing.indexOf(',');
+                secondComma = existing.indexOf(',', firstComma + 1);
+                int existingPriority = MapParser.getCellTypePriority(existing, secondComma);
                 if (newPriority >= existingPriority) {
                     cells.put(key, update);
                 }
             }
+            // Log special updates
+            int typeStart = update.indexOf(',', update.indexOf(',') + 1);
+            if (typeStart != -1) {
+                int pri = MapParser.getCellTypePriority(update, typeStart);
+                if (pri == 3 || pri == 4) {
+                    logger.info("Updated special cell", "playerId=" + playerId, "key=" + key, "priority=" + pri, "data=" + update);
+                }
+            }
         }
+        logger.info("Processed map updates", "playerId=" + playerId, "mazeId=" + mazeId, "count=" + updateCount);
 
         // Async persistence
         final Map<String, String> snapshot = new HashMap<>(cells);

@@ -46,13 +46,28 @@ public class IO {
                                 try {
                                     List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
                                     Map<String, String> cells = perPlayer.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>());
-
+    
                                     for (String line : lines) {
                                         String trimmed = line.trim();
                                         if (trimmed.isEmpty()) continue;
                                         String key = MapParser.extractKey(trimmed);
                                         if (key != null) cells.put(key, trimmed);
                                     }
+    
+                                    int finishCount = 0;
+                                    int formCount = 0;
+                                    for (String cellLine : cells.values()) {
+                                        int firstComma = cellLine.indexOf(',');
+                                        if (firstComma != -1) {
+                                            int secondComma = cellLine.indexOf(',', firstComma + 1);
+                                            if (secondComma != -1) {
+                                                int pri = MapParser.getCellTypePriority(cellLine, secondComma);
+                                                if (pri == 4) finishCount++;
+                                                else if (pri == 3) formCount++;
+                                            }
+                                        }
+                                    }
+                                    logger.info("Loaded player map from disk", "mazeId=" + mazeId, "playerId=" + playerId, "total=" + cells.size(), "finishes=" + finishCount, "forms=" + formCount);
                                 } catch (IOException e) {
                                     logger.warn("Failed to load player map", "file=" + file + " err=" + e.getMessage());
                                 }
