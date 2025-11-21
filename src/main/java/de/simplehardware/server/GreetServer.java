@@ -12,7 +12,6 @@ public class GreetServer {
     private final Map<String, Map<Integer, Map<String, String>>> mapsByMaze = new ConcurrentHashMap<>();
     private ServerSocket serverSocket;
     private final Path storageDir;
-    private final Path mazeConfigPath;
     private final IO io;
     private final ExecutorService diskWriter = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "map-disk-writer");
@@ -32,9 +31,7 @@ public class GreetServer {
         // IO will ensure storage directory exists and handle persistence
         io = new IO(storageDir, logger);
 
-        // Use the exact absolute path you provided
-        String cfg = "/home/jeapi/Desktop/Studium/Semester3/SoftwareEntwurf/Env/FHMaze/gameSettings.json";
-        mazeConfigPath = Paths.get(cfg).toAbsolutePath().normalize();
+        // Dynamic mazeId set by client
     }
 
     // ensureDirectoryExists moved to IO
@@ -71,7 +68,7 @@ public class GreetServer {
     }
 
     private void handleClient(Socket clientSocket) {
-        String currentMaze = io.readMazeId(mazeConfigPath);
+        String currentMaze = "default_maze";
         Integer currentPlayer = null;
 
         try (clientSocket;
@@ -82,6 +79,10 @@ public class GreetServer {
             while ((command = in.readLine()) != null) {
                 if (command.startsWith("PLAYER_ID ")) {
                     currentPlayer = parsePlayerId(command);
+                    out.println("OK");
+                } else if (command.startsWith("MAZE_ID ")) {
+                    currentMaze = command.substring(7).trim();
+                    logger.info("Client session set mazeId", "mazeId=" + currentMaze, "playerId=" + currentPlayer);
                     out.println("OK");
                 } else if ("GET_MAP".equals(command)) {
                     handleGetMap(out, currentMaze, currentPlayer);
