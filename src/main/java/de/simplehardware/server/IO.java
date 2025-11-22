@@ -20,80 +20,49 @@ public class IO {
         ensureDirectoryExists(this.storageDir);
     }
 
-    public Map<String, Map<Integer, Map<String, String>>> loadAll() {
-        Map<String, Map<Integer, Map<String, String>>> mapsByMaze = new ConcurrentHashMap<>();
-
+    public Map<String, Map<String, String>> loadAll() {
+        Map<String, Map<String, String>> mapsByMaze = new ConcurrentHashMap<>();
         if (!Files.exists(storageDir) || !Files.isDirectory(storageDir)) return mapsByMaze;
-
         try (Stream<Path> mazeDirs = Files.list(storageDir)) {
             mazeDirs.filter(Files::isDirectory).forEach(mazePath -> {
                 String mazeId = mazePath.getFileName().toString();
-                Map<Integer, Map<String, String>> perPlayer = mapsByMaze.computeIfAbsent(mazeId, k -> new ConcurrentHashMap<>());
-
-                try (Stream<Path> playerFiles = Files.list(mazePath)) {
-                    playerFiles
-                            .filter(p -> p.getFileName().toString().matches("player_\\d+\\.map"))
-                            .forEach(file -> {
-                                String fileName = file.getFileName().toString();
-                                int playerId;
-                                try {
-                                    playerId = Integer.parseInt(fileName.substring(7, fileName.indexOf('.')));
-                                } catch (NumberFormatException e) {
-                                    logger.warn("Invalid player file name", "file=" + fileName);
-                                    return;
+                Map<String, String> cells = mapsByMaze.computeIfAbsent(mazeId, k -> new ConcurrentHashMap<>());
+                try (Stream<Path> mapFiles = Files.list(mazePath)) {
+                    mapFiles
+                        .filter(p -> p.getFileName().toString().endsWith(".map"))
+                        .forEach(file -> {
+                            try {
+                                List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+                                for (String line : lines) {
+                                    String trimmed = line.trim();
+                                    if (trimmed.isEmpty()) continue;
+                                    cells.put(trimmed, trimmed);
                                 }
-
-                                try {
-                                    List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-                                    Map<String, String> cells = perPlayer.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>());
-    
-                                    for (String line : lines) {
-                                        String trimmed = line.trim();
-                                        if (trimmed.isEmpty()) continue;
-                                        String key = MapParser.extractKey(trimmed);
-                                        if (key != null) cells.put(key, trimmed);
-                                    }
-    
-                                    int finishCount = 0;
-                                    int formCount = 0;
-                                    for (String cellLine : cells.values()) {
-                                        int firstComma = cellLine.indexOf(',');
-                                        if (firstComma != -1) {
-                                            int secondComma = cellLine.indexOf(',', firstComma + 1);
-                                            if (secondComma != -1) {
-                                                int pri = MapParser.getCellTypePriority(cellLine, secondComma);
-                                                if (pri == 4) finishCount++;
-                                                else if (pri == 3) formCount++;
-                                            }
-                                        }
-                                    }
-                                    logger.info("Loaded player map from disk", "mazeId=" + mazeId, "playerId=" + playerId, "total=" + cells.size(), "finishes=" + finishCount, "forms=" + formCount);
-                                } catch (IOException e) {
-                                    logger.warn("Failed to load player map", "file=" + file + " err=" + e.getMessage());
-                                }
-                            });
+                                logger.info("Loaded map from disk", "mazeId=" + mazeId, "file=" + file.getFileName(), "total=" + cells.size());
+                            } catch (IOException e) {
+                                logger.warn("Failed to load map", "file=" + file + " err=" + e.getMessage());
+                            }
+                        });
                 } catch (IOException e) {
-                    logger.warn("Failed to list player files", "maze=" + mazePath + " err=" + e.getMessage());
+                    logger.warn("Failed to list map files", "maze=" + mazePath + " err=" + e.getMessage());
                 }
             });
         } catch (IOException e) {
             logger.warn("Failed to list maze directories", "err=" + e.getMessage());
         }
-
         return mapsByMaze;
     }
 
-    public void persistPlayerMap(String mazeId, int playerId, Map<String, String> cells) {
+    public void persistMap(String mazeId, Map<String, String> cells) {
         Path mazePath = storageDir.resolve(mazeId);
         ensureDirectoryExists(mazePath);
-        Path file = mazePath.resolve("player_" + playerId + ".map");
-
+        Path file = mazePath.resolve("map.map");
         try {
             List<String> sortedLines = new ArrayList<>(cells.values());
             Collections.sort(sortedLines);
             Files.write(file, sortedLines, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            logger.error("Failed to persist map", "maze=" + mazeId, "player=" + playerId, "err=" + e.getMessage());
+            logger.error("Failed to persist map", "maze=" + mazeId + ", err=" + e.getMessage());
         }
     }
 

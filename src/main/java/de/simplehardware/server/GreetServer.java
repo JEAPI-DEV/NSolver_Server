@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class GreetServer {
-    private final Map<String, Map<Integer, Map<String, String>>> mapsByMaze = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, String>> mapsByMaze = new ConcurrentHashMap<>();
     private ServerSocket serverSocket;
     private final Path storageDir;
     private final IO io;
@@ -69,117 +69,60 @@ public class GreetServer {
 
     private void handleClient(Socket clientSocket) {
         String currentMaze = "default_maze";
-        Integer currentPlayer = null;
-
         try (clientSocket;
              BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
              PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true)) {
-
+            logger.info("New client handler started");
             String command;
             while ((command = in.readLine()) != null) {
-                if (command.startsWith("PLAYER_ID ")) {
-                    currentPlayer = parsePlayerId(command);
-                    out.println("OK");
-                } else if (command.startsWith("MAZE_ID ")) {
+                logger.info("Received command", "cmd=" + command);
+                if (command.startsWith("MAZE_ID ")) {
                     currentMaze = command.substring(7).trim();
-                    logger.info("Client session set mazeId", "mazeId=" + currentMaze, "playerId=" + currentPlayer);
+                    logger.info("Client session set mazeId", "mazeId=" + currentMaze);
                     out.println("OK");
+                    logger.info("Sent OK for MAZE_ID");
                 } else if ("GET_MAP".equals(command)) {
-                    handleGetMap(out, currentMaze, currentPlayer);
+                    logger.info("Handling GET_MAP", "mazeId=" + currentMaze);
+                    handleGetMap(out, currentMaze);
+                    logger.info("GET_MAP handled");
                 } else if (command.startsWith("UPDATE_MAP ")) {
-                    handleUpdateMap(command, currentMaze, currentPlayer);
+                    logger.info("Handling UPDATE_MAP", "mazeId=" + currentMaze);
+                    handleUpdateMap(command, currentMaze);
                     out.println("UPDATED");
+                    logger.info("Sent UPDATED for UPDATE_MAP");
                 } else {
+                    logger.info("Unknown command", "cmd=" + command);
                     out.println("UNKNOWN_COMMAND");
                 }
             }
+            logger.info("Client handler finished (connection closed)");
         } catch (IOException e) {
             logger.warn("Client connection error", "err=" + e.getMessage());
         }
     }
 
-    private Integer parsePlayerId(String command) {
-        return MapParser.parsePlayerId(command);
-    }
 
-    private void handleGetMap(PrintWriter out, String mazeId, Integer playerId) {
-        if (playerId == null) {
-            out.println("NO_PLAYER");
-            return;
-        }
-
-        Map<String, String> cells = mapsByMaze
-                .getOrDefault(mazeId, Collections.emptyMap())
-                .getOrDefault(playerId, Collections.emptyMap());
-
-        int finishCount = 0;
-        int formCount = 0;
-        for (String cellLine : cells.values()) {
-            int firstComma = cellLine.indexOf(',');
-            if (firstComma != -1) {
-                int secondComma = cellLine.indexOf(',', firstComma + 1);
-                if (secondComma != -1) {
-                    int pri = MapParser.getCellTypePriority(cellLine, secondComma);
-                    if (pri == 4) finishCount++;
-                    else if (pri == 3) formCount++;
-                }
-            }
-        }
-        logger.info("Sending map to player", "playerId="+playerId, "mazeId="+mazeId, "total="+cells.size(), "finishes="+finishCount, "forms="+formCount);
-
+    private void handleGetMap(PrintWriter out, String mazeId) {
+        Map<String, String> cells = mapsByMaze.getOrDefault(mazeId, Collections.emptyMap());
         if (cells.isEmpty()) {
             out.println("NO_MAP");
         } else {
-            // Join values directly without creating intermediate list
-            StringBuilder response = new StringBuilder(cells.size() * 30);
-            boolean first = true;
-            for (String cell : cells.values()) {
-                if (!first) response.append(';');
-                response.append(cell);
-                first = false;
-            }
-            out.println(response.toString());
+            out.println(String.join(";", cells.values()));
         }
     }
 
-    private void handleUpdateMap(String command, String mazeId, Integer playerId) {
-        if (playerId == null) return;
-
+    private void handleUpdateMap(String command, String mazeId) {
         String data = command.substring(11);
         if (data.isEmpty()) return;
-
-        Map<Integer, Map<String, String>> perPlayer = mapsByMaze.computeIfAbsent(mazeId, k -> new ConcurrentHashMap<>());
-        Map<String, String> cells = perPlayer.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>());
-
+        Map<String, String> cells = mapsByMaze.computeIfAbsent(mazeId, k -> new ConcurrentHashMap<>());
         String[] updatesArray = data.split(";");
-        int updateCount = 0;
         for (String update : updatesArray) {
             if (update == null || update.isEmpty()) continue;
             update = update.trim();
-            updateCount++;
-
-            String key = MapParser.extractKey(update);
-            if (key == null) continue;
-
-            String existing = cells.get(key);
-            if (existing == null) {
-                cells.put(key, update);
-            } else {
-                int firstComma = update.indexOf(',');
-                int secondComma = update.indexOf(',', firstComma + 1);
-                int newPriority = MapParser.getCellTypePriority(update, secondComma);
-                firstComma = existing.indexOf(',');
-                secondComma = existing.indexOf(',', firstComma + 1);
-                int existingPriority = MapParser.getCellTypePriority(existing, secondComma);
-                if (newPriority >= existingPriority) {
-                    cells.put(key, update);
-                }
-            }
+            cells.put(update, update);
         }
-        logger.info("Processed map updates", "playerId=" + playerId, "mazeId=" + mazeId, "count=" + updateCount);
-
         final Map<String, String> snapshot = new HashMap<>(cells);
-        diskWriter.execute(() -> io.persistPlayerMap(mazeId, playerId, snapshot));
+        diskWriter.execute(() -> io.persistMap(mazeId, snapshot));
     }
 
     // persistence and loading moved to IO
