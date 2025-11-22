@@ -26,11 +26,12 @@ public class MapParser {
     }
 
     public static int getCellTypePriority(String cellData, int typeStartIndex) {
-        if (typeStartIndex == -1 || typeStartIndex >= cellData.length() - 1) return 1;
+        if (typeStartIndex == -1 || typeStartIndex >= cellData.length() - 1) return 0;
         String typePart = cellData.substring(typeStartIndex + 1);
         if (typePart.startsWith("FINISH")) return 4;
         if (typePart.startsWith("FORM")) return 3;
         if (typePart.startsWith("WALL")) return 2;
-        return 1;
+        if (typePart.startsWith("FLOOR")) return 1;
+        return 0;
     }
 }

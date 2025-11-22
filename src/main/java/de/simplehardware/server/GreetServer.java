@@ -175,18 +175,9 @@ public class GreetServer {
                     cells.put(key, update);
                 }
             }
-            // Log special updates
-            int typeStart = update.indexOf(',', update.indexOf(',') + 1);
-            if (typeStart != -1) {
-                int pri = MapParser.getCellTypePriority(update, typeStart);
-                if (pri == 3 || pri == 4) {
-                    logger.info("Updated special cell", "playerId=" + playerId, "key=" + key, "priority=" + pri, "data=" + update);
-                }
-            }
         }
         logger.info("Processed map updates", "playerId=" + playerId, "mazeId=" + mazeId, "count=" + updateCount);
 
-        // Async persistence
         final Map<String, String> snapshot = new HashMap<>(cells);
         diskWriter.execute(() -> io.persistPlayerMap(mazeId, playerId, snapshot));
     }
