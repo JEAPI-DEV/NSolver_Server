@@ -28,18 +28,10 @@ public class GreetServer {
     public GreetServer() {
         String dir = System.getenv().getOrDefault("MAP_STORAGE_DIR", "./maps");
         storageDir = Paths.get(dir).toAbsolutePath().normalize();
-        // IO will ensure storage directory exists and handle persistence
         io = new IO(storageDir, logger);
-
-        // Dynamic mazeId set by client
     }
 
-    // ensureDirectoryExists moved to IO
-
-    // maze id reading delegated to IO.readMazeId
-
     public void start(int port) throws IOException {
-        // load persisted maps from disk via IO
         mapsByMaze.putAll(io.loadAll());
         serverSocket = new ServerSocket(port);
         logger.info("Server started", "port=" + port, "storage=" + storageDir);
@@ -107,7 +99,10 @@ public class GreetServer {
         if (cells.isEmpty()) {
             out.println("NO_MAP");
         } else {
-            out.println(String.join(";", cells.values()));
+            for (String line : cells.values()) {
+                out.println(line);
+            }
+            out.println("END_MAP");
         }
     }
 
@@ -115,17 +110,14 @@ public class GreetServer {
         String data = command.substring(11);
         if (data.isEmpty()) return;
         Map<String, String> cells = mapsByMaze.computeIfAbsent(mazeId, k -> new ConcurrentHashMap<>());
-        String[] updatesArray = data.split(";");
-        for (String update : updatesArray) {
-            if (update == null || update.isEmpty()) continue;
-            update = update.trim();
+        // Each UPDATE_MAP now sends a single line
+        String update = data.trim();
+        if (!update.isEmpty()) {
             cells.put(update, update);
         }
         final Map<String, String> snapshot = new HashMap<>(cells);
         diskWriter.execute(() -> io.persistMap(mazeId, snapshot));
     }
-
-    // persistence and loading moved to IO
 
     public static void main(String[] args) {
         try {
